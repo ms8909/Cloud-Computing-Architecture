@@ -8,7 +8,6 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <string.h>
-#include <time.h>
 
 #define BUFM 1000
 #define BUFC 3000
@@ -62,12 +61,13 @@ int establish_connection(){
 int send_request(int sock, char* request) {
       printf("sending %s\n", request);
 
-      if (send(sock, request, strlen(request)+1,0) == -1) { 
+      if (send(sock, request, strlen(request)+1, 0) == -1) { 
         perror("write fname");
         exit(2);
       }  
       
       return sock;}
+
 
 
 int send_file(int sock, char* file_name) {
@@ -81,16 +81,18 @@ int send_file(int sock, char* file_name) {
       }
       
         /* Send file contents */
-      content = malloc(5024);
-        if ((size = read(fd, content, 5024)) < 0) {
+      content = malloc(1024);
+      while(size > 0) {
+        if ((size = read(fd, content, 1024)) < 0) {
           perror("read");
           exit(1);
         }
-        if (send(sock, content, size+1,0) == -1) { 
+        if (write(sock, content, size) == -1) { 
           perror("write content");
           exit(2);
         }
         printf("content3\n");
+      }
       return sock;
 
 }
@@ -105,46 +107,36 @@ int close_socket(int sock) {
 
 int main(int argc, char *argv[]){
     /* read inputs */
-	int replicas;	
-	replicas= atoi(argv[1]);
-    printf("%d\n", replicas);
 
-    char *make_file;
-    make_file= argv[2];
-    printf("%s\n", make_file);
 
-    char *code;
-    code= argv[3];
-    printf("%s\n", code);
+    char *job_ticket;
+    job_ticket= argv[1];
+    printf("%s\n", job_ticket);
 
-    /* generate job ticket number that can be used to send information to the server. */
-    char job_ticket[10];
-    srand ( time(NULL) );
-    int num= rand() % 50000;
-    sprintf(job_ticket, "%d", num); 
+    /*
+    char *directory;
+    directory= argv[3];
+    printf("%s\n", directory); */
+
 
     /* send request type to the master server. */
 
-    /* send data type. */
-
-    /* send data to the maste server */
-    char * data_type[3]= {"replica","make_file", "data"};
     int sock;
+  
     sock = establish_connection();
-    sock = send_request(sock, "deploy");
+    sock = send_request(sock, "status");
     sock = send_request(sock, job_ticket);
-    sleep(1);
-    sock = send_request(sock, argv[1]);
-    sleep(1);
-    sock = send_file(sock, argv[2]);
-    sleep(1);
-    sock = send_file(sock, argv[3]);
-    sleep(1);
-    sock=  close_socket(sock);
 
+    /* wait for the result */
+    char res[2400];
+    /* Receive reply */			
+	if (read(sock,res,sizeof(char)*2400) == -1) {
+		perror("recvfrom");
+		exit(1);
+	}
+	
 
-    printf("Job ticket is %s\n", job_ticket);
-    /* return job ticket number */
+    printf("The Status is %s\n", res);
 	return 0;
 
 }

@@ -13,16 +13,15 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <pthread.h>
-#include <semaphore.h>
 
-char * ports[10];
+int ports[10];
 int port_available[10];
-sem_t *sem_workers;
+
 /* load ports from the file */
 /* TO DO */
 /* two semaphore mutex */
-pthread_mutex_t mutex_tr = PTHREAD_MUTEX_INITIALIZER; 
-pthread_mutex_t mutex_acq_port = PTHREAD_MUTEX_INITIALIZER; 
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER; 
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER; 
 
 /* data structures to store all the requests. */
 typedef struct rep { 
@@ -42,78 +41,7 @@ typedef struct req {
 int total_requests;
 
 struct req requests[10000];
-
-typedef struct for_dep {
-              int position;
-              int rep_num;
-          } for_dep;
 /* end of data structure */
-int establish_connection(char * prt){
-    struct sockaddr_in dest; /* Server name */
-      struct addrinfo *result;
-      int sock, size = 1;
-      char* ip;
-      ip= "localhost";
-      char* port;
-      port =prt;
-      
-
-      if ((sock = socket(AF_INET,SOCK_STREAM,0)) == -1) {
-        perror("socket");
-        exit(1);
-      }
-
-      /* Find server */
-      
-      struct addrinfo hints = {};
-      hints.ai_family = AF_INET;
-      hints.ai_socktype = SOCK_STREAM;
-      hints.ai_flags = AI_ADDRCONFIG | AI_CANONNAME;
-      hints.ai_protocol = 0;
-
-      if (getaddrinfo("localhost", port, &hints, &result) != 0) {
-        perror("getaddrinfo");
-        exit(EXIT_FAILURE);
-      }
-
-      memset((void *)&dest,0, sizeof(dest));
-      memcpy((void*)&((struct sockaddr_in*)result->ai_addr)->sin_addr,(void*)&dest.sin_addr,sizeof(dest));
-      dest.sin_family = AF_INET;
-      dest.sin_port = htons(atoi(port));
-      
-
-        printf("reconnected\n");
-      /* Establish connection */
-      
-      if (connect(sock, (struct sockaddr *) &dest, sizeof(dest)) == -1) {
-        perror("connect");
-        exit(1);
-      }
-      return sock;
-
-}
-int send_data(int sock, char* request) {
-      printf("sending %s\n", request);
-
-      if (send(sock, request, strlen(request)+1,0) == -1) { 
-        perror("write fname");
-        exit(2);
-      }  
-      
-      return sock;
-}
-
-int close_socket(int sock) {
-        /* Close connection */
-      shutdown(sock,2); 
-      close(sock);
-      return sock;
-  
-}
-/* establish connection and close connection part */
-
-
-
 
 /* send file to the server */
 int send_file(int sock, char* file_name) {
@@ -127,97 +55,23 @@ int send_file(int sock, char* file_name) {
       }
       
         /* Send file contents */
-      content = malloc(5024);
-        if ((size = read(fd, content, 5024)) < 0) {
+      content = malloc(1024);
+      while(size > 0) {
+        if ((size = read(fd, content, 1024)) < 0) {
           perror("read");
           exit(1);
         }
-        if (send(sock, content, size+1,0) == -1) { 
+        if (write(sock, content, size) == -1) { 
           perror("write content");
           exit(2);
         }
-        printf("content3\n");
+        printf("Results back to the client\n");
+      }
       return sock;
 
 }
-/* end of connection part*/
-
-/* Add loading port numbers from the files later */
-int load_workers(){
-       char * ports_temp[10] = {"8890","8891","8892","8893","8895", "8896","8897", "8898", "8899", "8900"};
-       int k;
-       for(k=0;k<10;k++){
-         port_available[k]= 1;
-         ports[k]= ports_temp[k];
-       }
-       return 0;
-}
-
-void * worker(void * send){
-  for_dep s = *(for_dep *)send;
-  printf("Yayy worker time to do your job now. %d\n", s.position);
-  printf("Yayy worker time to do your job now. %d\n", s.rep_num);
-  
-  /*  wait till a worker is available. acquire port number */
-  sem_wait(sem_workers);
-  char* port_to_use;
-  int port_at;
-  int k;
-  pthread_mutex_lock(& mutex_acq_port);
-          for(k=0;k<10;k++){
-            if(port_available[k]==1){
-              port_at=k;
-              break;
-            }
-          }
-          port_available[port_at]=0;
-  pthread_mutex_unlock(& mutex_acq_port);
-  port_to_use= ports[port_at];
-  /* establish connection with the worker using the port number */
-
-
-
-  
-
-  /* seen make file and code */
-
-
-
-  /* wait for the response from the worker */ 
-
-  /*  update all the varaibles associated with the request*/
-  sem_post(sem_workers);
-
-  /* exit the thread */
-  pthread_exit((void *) 0);
-
-}
-
 int deploy_on_worker(int sock, char* job_ticket, int position){
     printf("Deployed \n");
-    /* Use the position to extract right element  */
-    int k;
-    /* Acquire number of repliacas availle*/
-    struct for_dep *send;
-    for(k=0; k<requests[position].num_rep; k++){
-          /* call worker, in thread, that will put one replica on one worder */
-          send =(struct for_dep *) malloc(sizeof(struct for_dep));
-          pthread_t tid;
-          send->position= position;
-          send->rep_num= k;
-
-          if(pthread_create(&tid,NULL, worker, (void *)send)!=0){
-              printf("pthread_create \n");
-              exit(1);}
-              printf("We are in worker thread. \n");
-          }
-
-      
-    
-    
-
-    /*  wait until every worker is done with their work using p_thread*/
-
   return 0; 
 
 }
@@ -227,83 +81,122 @@ void * deploy(void * sck) {
   int sock = *(int *)sck;
   printf("Communication socket  %d\n", sock);
 
+  char data_type[24];
   char job_ticket[24];
   
 
   char* content;
   char r[24];
-  int size = 1;  
+  int fd, size = 1;  
 
     /*** Acquire job ticket ***/
-  if (recv( sock, job_ticket, sizeof(char)*24, 0) < 0) {
+  if (read( sock, job_ticket, sizeof(char)*24) < 0) {
+    perror("read");
+    exit(1);
+  }
+  printf("Acquiring job ticket  %s\n", job_ticket);
+  /* make new base directory based on the ticket number TODO  
+  char* base = concat(job_ticket,"/");
+  printf("Job ticket %s\n", job_ticket); */
+
+  /*** Acquire data type ***/
+  if (read(sock, data_type, sizeof(char)*24) < 0) {
     perror("read");
     exit(1);
   }
 
-  printf("Acquiring job ticket  %s\n", job_ticket);
+  printf("Data_type %s\n", data_type);
 
-  if (recv(sock, r, sizeof(char)*24,0) < 0) {
+  if(strcmp(data_type,"replica") == 0){
+	      /*** Acquire # replicas ***/
+        if (read(sock, r, sizeof(char)*24) < 0) {
             perror("read");
             exit(1);
         }
-  printf("Total replicas %s\n", r);
+        printf("Total replicas %s\n", r);
 
-
-
-  struct req temp;
+        /* make a structure */
+        printf("Total replicas2 %c\n", r[0]);
+        struct req temp;
         
-  temp.job_ticket= job_ticket;
+        temp.job_ticket= job_ticket;
         
-  temp.num_rep= atoi(r);
-  /* add job ticket, number of replicas, status and rersults. */
-  int j;
-  for(j=0; j<temp.num_rep; j++){
+        temp.num_rep= atoi(r);
+        /* add job ticket, number of replicas, status and rersults. */
+        int j;
+        for(j=0; j<temp.num_rep; j++){
         temp.replicas[j].status= "NOT RUNNING";
         temp.replicas[j].result="NONE"; 
         temp.replicas[j].deployed=0; }
-  /* update the vaiable total_requests in semaphores */
-        int position;
-        pthread_mutex_lock(& mutex_tr);
-        position= total_requests;
+        /* update the vaiable total_requests in semaphores */
+        int temp_request;
+        temp_request= total_requests;
         total_requests= total_requests+1;
-        pthread_mutex_unlock(& mutex_tr);
-  /* update requests array */
-        requests[position]= temp;
+        /* update requests array */
+        requests[temp_request]= temp;
+        /*
+        char* base = concat(job_ticket,"/");
+        request[temp_request].make_file= concat(base,"make_file");
+        request[temp_request].data= concat(base,"data.c");
+        */
+        printf("Total replicas3 %d\n", temp.num_rep);
+          shutdown(sock,2);
+          close(sock);
+        pthread_exit((void *) 0);
+        }
+
 
   
-  content = malloc(5024);
+  
+  if ((fd = open(data_type, O_WRONLY|O_TRUNC|O_CREAT, 0666)) < 0) {
+    perror("open please");
+    exit(1);
+  }
 
-    if ((size = recv(sock, content, 5024,0)) < 0) {
+
+	/*** Process file content ***/
+  
+  content = malloc(1024);
+  while(size > 0) {
+    if ((size = read(sock, content, 1024)) < 0) {
       perror("read");
       exit(1);
     }
-  printf("make file  %s\n", content);
-  requests[position].make_file= content;
 
-  
-  content = malloc(5024);
-
-    if ((size = recv(sock, content, 5024,0)) < 0) {
-      perror("read");
-      exit(1);
+    if (write(fd, content, size) == -1) { 
+      perror("write");
+      exit(2);
     }
+  }
 
-  printf("code  %s\n", content);
-  requests[position].data= content;
-
-  /* Ask workers to start work */
-  sock =deploy_on_worker(sock, job_ticket, position);
+    /* find where to store them the details. */
+        int k;
+        int position;
+        for(k=0; k<total_requests; k++){
+            if(strcmp(requests[k].job_ticket,job_ticket) == 0){
+                position=k;
+                break;
+            }
+        }
+    
+    if(strcmp(data_type,"make_file") == 0){ 
+        requests[position].make_file= content;
+        }
+    if(strcmp(data_type,"data") == 0){ 
+        requests[position].make_file= content;
+          printf("Time to Deploy.\n");
+            /* Ask workers to start work */
+            sock =deploy_on_worker(sock, job_ticket, position);
             /* Close connection */
+        }
 	  
-  printf("Deployment Done. \n");
+  printf("content2\n");
   shutdown(sock,2);
   close(sock);
   pthread_exit((void *) 0);
 }
 
-void * result(void * sck) {
-  int sock = *(int *)sck;
-  printf("Communication socket  %d\n", sock);
+int result(int sock) {
 
   char job_ticket[24];
   char * content="The result: ";
@@ -369,9 +262,7 @@ void * result(void * sck) {
     return 0;
 }
 
-void * status(void * sck) {
-  int sock = *(int *)sck;
-  printf("Communication socket  %d\n", sock);
+int status(int sock) {
 
   char job_ticket[24];
   char * content="DONE";
@@ -434,9 +325,6 @@ void * status(void * sck) {
 int main(int argc, char *argv[])
 {
   total_requests=0;
-  	/* create mutex with # of workers as an input. */
-	sem_workers= sem_open("mysem_c", O_CREAT | O_RDWR, 0666, 10);
-  int a= load_workers();
   struct sockaddr_in sin;   /* Name of the connection socket */
   struct sockaddr_in exp;   /* Name of the client socket */
   int sc ;                  /* Connection socket */
@@ -498,23 +386,15 @@ int main(int argc, char *argv[])
     printf("Request type done: %s\n", request_type);
     if(strcmp(request_type,"deploy") == 0){
 
-      if(pthread_create(&tid,NULL, deploy, (void *)pt_scom)!=0){
-        printf("pthread_create \n");
-        exit(1);}
+        if(pthread_create(&tid,NULL, deploy, (void *)pt_scom)!=0){
+			printf("pthread_create \n");
+			exit(1);}
         printf("We are in the thread. \n");
-	   }
+	  /* deploy(scom); */ }
     if(strcmp(request_type,"status") == 0){
-      if(pthread_create(&tid,NULL, status, (void *)pt_scom)!=0){
-        printf("pthread_create \n");
-        exit(1);}
-        printf("We are in the thread. \n");
-	 }
+	  status(scom);}
     if(strcmp(request_type,"result") == 0){
-      if(pthread_create(&tid,NULL, result, (void *)pt_scom)!=0){
-        printf("pthread_create \n");
-        exit(1);}
-        printf("We are in the thread. \n");
-	  }
+	  result(scom);}
     
   }
 

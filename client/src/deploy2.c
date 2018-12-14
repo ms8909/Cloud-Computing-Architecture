@@ -8,7 +8,6 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <string.h>
-#include <time.h>
 
 #define BUFM 1000
 #define BUFC 3000
@@ -81,16 +80,18 @@ int send_file(int sock, char* file_name) {
       }
       
         /* Send file contents */
-      content = malloc(5024);
-        if ((size = read(fd, content, 5024)) < 0) {
+      content = malloc(1024);
+      while(size > 0) {
+        if ((size = read(fd, content, 1024)) < 0) {
           perror("read");
           exit(1);
         }
-        if (send(sock, content, size+1,0) == -1) { 
+        if (write(sock, content, size) == -1) { 
           perror("write content");
           exit(2);
         }
         printf("content3\n");
+      }
       return sock;
 
 }
@@ -119,7 +120,6 @@ int main(int argc, char *argv[]){
 
     /* generate job ticket number that can be used to send information to the server. */
     char job_ticket[10];
-    srand ( time(NULL) );
     int num= rand() % 50000;
     sprintf(job_ticket, "%d", num); 
 
@@ -130,18 +130,20 @@ int main(int argc, char *argv[]){
     /* send data to the maste server */
     char * data_type[3]= {"replica","make_file", "data"};
     int sock;
-    sock = establish_connection();
-    sock = send_request(sock, "deploy");
-    sock = send_request(sock, job_ticket);
-    sleep(1);
-    sock = send_request(sock, argv[1]);
-    sleep(1);
-    sock = send_file(sock, argv[2]);
-    sleep(1);
-    sock = send_file(sock, argv[3]);
-    sleep(1);
-    sock=  close_socket(sock);
+    int i;
+    for(i=0; i<3;i++){
+        sock = establish_connection();
+        sock = send_request(sock, "deploy");
+        sock = send_request(sock, job_ticket);
+        sock = send_request(sock, data_type[i]);
+        if(i==0){
 
+            sock = send_request(sock, argv[i+1]);
+        }
+        else{
+            sock = send_file(sock, argv[i+1]);}
+        sock=  close_socket(sock);
+    }
 
     printf("Job ticket is %s\n", job_ticket);
     /* return job ticket number */
