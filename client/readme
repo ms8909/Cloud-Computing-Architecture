@@ -1,0 +1,10 @@
+src
+	q1.c
+	q2.c
+	q3.c
+	q4.c
+
+
+Question 3.2
+
+Yes it is possible to do with one SIGUSRI signal but in this case only one process can send SIGUSRI to two other processes at one time, so all three processes take turns. 
