@@ -1,13 +1,13 @@
+
 #include <stdio.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
-#include <sys / socket.h> 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <string.h>
 
 #define BUFM 1000
 #define BUFC 3000
@@ -117,39 +117,36 @@ int main(int argc, char *argv[]){
     char *code;
     code= argv[3];
     printf("%s\n", code);
-    /* read the content of the files. */
-    int mkf, codef, i, j;
-    char buffer_m [BUFM];
-    char buffer_c [BUFC];
-
-    mkf = open(argv[2], O_RDWR, 0600);
-    if (mkf == -1) {
-        perror("Error when opening the make file.");
-        exit(1);}
-    
-    codef = open(argv[3], O_RDWR, 0600);
-    if (codef == -1) {
-        perror("Error when opening the code file.");
-        exit(1);}
-
-    i = read(mkf, buffer_m, BUFM);
-    printf("%s\n", buffer_m);
-
-    i = read(codef, buffer_c, BUFC);
-    printf("%s\n", buffer_c);
 
     /* generate job ticket number that can be used to send information to the server. */
-    int job_ticket;
-    job_ticket=1;
+    char job_ticket[10];
+    int num= rand() % 50000;
+    sprintf(job_ticket, "%d", num); 
 
-    
     /* send request type to the master server. */
 
     /* send data type. */
 
     /* send data to the maste server */
+    char * data_type[3]= {"replica","make_file", "data"};
+    int sock;
+    int i;
+    for(i=0; i<3;i++){
+        sock = establish_connection();
+        sock = send_request(sock, "deploy");
+        sock = send_request(sock, job_ticket);
+        sock = send_request(sock, data_type[i]);
+        if(i==0){
 
+            sock = send_request(sock, argv[i+1]);
+        }
+        else{
+            sock = send_file(sock, argv[i+1]);}
+        sock=  close_socket(sock);
+    }
+
+    printf("Job ticket is %s\n", job_ticket);
     /* return job ticket number */
-	return job_ticket;
+	return 0;
 
 }
